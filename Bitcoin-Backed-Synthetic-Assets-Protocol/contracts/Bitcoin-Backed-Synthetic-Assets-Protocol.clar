@@ -257,3 +257,71 @@
     asset-types: (list 10 uint)
   }
 )
+
+;; Enhanced oracle price update - requires authorization
+(define-public (update-price (asset-id uint) (price uint))
+  (begin
+    (match (map-get? authorized-oracles { address: tx-sender })
+      oracle-data
+      (begin
+        (asserts! (get is-active oracle-data) ERR-NOT-AUTHORIZED)
+        (asserts! (> price u0) ERR-INVALID-AMOUNT)
+        
+        ;; Check if oracle is authorized for this asset type
+        (asserts! (is-some (index-of (get asset-types oracle-data) asset-id)) ERR-NOT-AUTHORIZED)
+        
+        (ok (map-set asset-prices
+          { asset-id: asset-id }
+          {
+            price: price,
+            last-update: stacks-block-height,
+            source: tx-sender
+          }
+        ))
+      )
+      ERR-NOT-AUTHORIZED
+    )
+  )
+)
+
+
+;; Get the current price with validation
+(define-public (query-price (asset-id uint))
+  (begin
+    (match (map-get? asset-prices { asset-id: asset-id })
+      price-data
+      (begin
+        (asserts! (< (- stacks-block-height (get last-update price-data)) ORACLE-PRICE-EXPIRY) ERR-PRICE-EXPIRED)
+        (ok (get price price-data))
+      )
+      ERR-ORACLE-DATA-UNAVAILABLE
+    )
+  )
+)
+
+(define-constant ERR-INSURANCE-CLAIM-REJECTED (err u1013))
+(define-constant ERR-REFERRAL-NOT-FOUND (err u1014))
+(define-constant ERR-TRADING-PAIR-NOT-FOUND (err u1015))
+(define-constant ERR-FLASH-LOAN-FAILED (err u1016))
+(define-constant ERR-VAULT-LOCKED (err u1017))
+(define-constant ERR-INSUFFICIENT-BALANCE (err u1018))
+(define-constant ERR-SWAP-SLIPPAGE-EXCEEDED (err u1019))
+(define-constant ERR-LIMIT-ORDER-INVALID (err u1020))
+(define-constant ERR-NFT-COLLATERAL-INVALID (err u1021))
+(define-constant ERR-YIELD-FARM-NOT-FOUND (err u1022))
+
+;; Insurance fund to cover bad debt from liquidations
+(define-data-var insurance-fund-balance uint u0)
+(define-data-var insurance-premium-rate uint u2) ;; 0.2% premium
+(define-data-var insurance-coverage-ratio uint u80) ;; 80% coverage
+
+(define-map insurance-claims 
+  { claim-id: uint }
+  {
+    claimant: principal,
+    asset-id: uint,
+    amount: uint,
+    status: (string-ascii 10), ;; "pending", "approved", "rejected"
+    timestamp: uint
+  }
+)
