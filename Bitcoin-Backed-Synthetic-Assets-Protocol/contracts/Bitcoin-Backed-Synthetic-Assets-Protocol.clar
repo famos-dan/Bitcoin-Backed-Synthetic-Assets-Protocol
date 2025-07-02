@@ -325,3 +325,44 @@
     timestamp: uint
   }
 )
+
+(define-data-var claim-counter uint u0)
+
+;; Contribute to insurance fund
+(define-public (contribute-to-insurance-fund (amount uint))
+  (begin
+    (asserts! (> amount u0) ERR-INVALID-AMOUNT)
+    ;; In a real implementation, this would transfer STX from tx-sender to the contract
+    ;; For this example, we're just incrementing the fund balance
+    (var-set insurance-fund-balance (+ (var-get insurance-fund-balance) amount))
+    (ok (var-get insurance-fund-balance))
+  )
+)
+
+;; File an insurance claim
+(define-public (file-insurance-claim (asset-id uint) (amount uint))
+  (let 
+    (
+      (claim-id (var-get claim-counter))
+    )
+    (asserts! (> amount u0) ERR-INVALID-AMOUNT)
+    (asserts! (is-asset-supported asset-id) ERR-ASSET-NOT-SUPPORTED)
+    
+    ;; Create the claim
+    (map-set insurance-claims
+      { claim-id: claim-id }
+      {
+        claimant: tx-sender,
+        asset-id: asset-id,
+        amount: amount,
+        status: "pending",
+        timestamp: stacks-block-height
+      }
+    )
+    
+    ;; Increment claim counter
+    (var-set claim-counter (+ claim-id u1))
+    
+    (ok claim-id)
+  )
+)
